@@ -2,6 +2,8 @@ module BlackJack where
 import Cards
 import Wrapper
 import Test.QuickCheck
+    hiding (shuffle)
+import System.Random
 --------------- Lab 2A ----------------------------------
 -- Group 10 
 
@@ -51,8 +53,9 @@ gameOver h = value h > 21
 
 -- Compares the player hand to the bank to distinguish the winner.
 winner :: Hand -> Hand -> Player
-winner p b  | value p > value b = Guest
-            | otherwise         = Bank
+winner p b  | gameOver p = Bank
+            | value p > value b || gameOver b = Guest 
+            | otherwise  = Bank
   
     
 ----------------Lab 2B----------------------------------------
@@ -77,14 +80,68 @@ fullDeck = suitCards Hearts <+ suitCards Clubs
 suitCards :: Suit -> Hand
 suitCards s1 =  suitNumeric s1 <+ (Add(Card Jack s1)
                                   (Add(Card Queen s1)
-                                  (Add(Card King s1) 
-                                        Empty)))
+                                  (Add(Card King s1)
+                                  (Add(Card Ace s1)
+                                        Empty))))
 
 suitNumeric :: Suit -> Hand
-suitNumeric s1 = suitNumeric1 s1 2
+suitNumeric s1 = suitNumeric' s1 2
 
-suitNumeric1 :: Suit -> Integer -> Hand 
-suitNumeric1 s1 11 = Empty
-suitNumeric1 s1 n = Add (Card (Numeric n) s1) Empty 
-                    <+ suitNumeric1 s1 (n+1)
+suitNumeric' :: Suit -> Integer -> Hand 
+suitNumeric' s1 11 = Empty
+suitNumeric' s1 n = Add (Card (Numeric n) s1) Empty 
+                    <+ suitNumeric' s1 (n+1)
 
+draw :: Hand -> Hand -> (Hand,Hand)
+draw Empty  h       = error "draw: The deck is empty."
+draw (Add c d) h    = (d, Add c h)
+
+playBank :: Hand -> Hand
+playBank d = playBank' (d, Empty) 
+
+playBank' :: (Hand, Hand) -> Hand
+playBank' (d,b) | value b > 15  = b
+                | otherwise     = playBank' (d',b')
+                    where (d',b') = draw d b
+
+shuffle :: StdGen -> Hand -> Hand
+shuffle g d  = shuffle' g (d,Empty)   
+
+shuffle' :: StdGen -> (Hand, Hand) -> Hand
+shuffle' g (Empty,shufDeck) = shufDeck
+shuffle' g (deck,shufDeck)  = shuffle' g' (newDeck,(Add c shufDeck)) 
+    where   (n,g')       = randomR (0, (size deck)-1) g
+            (c, newDeck) = indexDraw (deck, Empty) n
+       
+
+-- Returns the hand without the card of given index,
+-- and the card itself.
+indexDraw :: (Hand,Hand) -> Integer -> (Card, Hand)
+indexDraw (Empty, d') _     = error "index not present" 
+indexDraw ((Add c d), d') 0 = (c, d' <+ d)
+indexDraw ((Add c d), d') n  = indexDraw (d ,(Add c d')) (n-1)
+
+prop_shuffle_sameCards :: StdGen -> Card -> Hand -> Bool
+prop_shuffle_sameCards g c h =
+    c `belongsTo` h == c `belongsTo` shuffle g h
+
+belongsTo :: Card -> Hand -> Bool
+c `belongsTo` Empty = False
+c `belongsTo`(Add c' h) = c == c' || c `belongsTo` h
+
+prop_size_shuffle :: StdGen -> Hand -> Bool
+prop_size_shuffle g h = size h == size (shuffle g h)
+
+implementation = Interface
+    {iEmpty         = empty
+    ,iFullDeck      = fullDeck
+    ,iValue         = value
+    ,iGameOver      = gameOver
+    ,iWinner        = winner
+    ,iDraw          = draw
+    ,iPlayBank      = playBank
+    ,iShuffle       = shuffle
+    }
+    
+main :: IO ()
+main = runGame implementation
