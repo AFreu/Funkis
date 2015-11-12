@@ -60,7 +60,7 @@ winner p b  | gameOver p = Bank
     
 ----------------Lab 2B----------------------------------------
   
-
+-- Append operator which works for hands
 (<+) :: Hand -> Hand -> Hand
 h1          <+ Empty        = h1
 Empty       <+ h2           = h2
@@ -73,54 +73,58 @@ prop_onTopOf_assoc p1 p2 p3 = p1 <+ (p2 <+ p3) == (p1 <+ p2) <+ p3
 prop_size_onTopOf :: Hand -> Hand -> Bool
 prop_size_onTopOf p1 p2 = size (p1 <+ p2) == size p1 + size p2
 
+-- Returns a full deck of 52 cards ordered by size and suit.
 fullDeck :: Hand 
 fullDeck = suitCards Hearts <+ suitCards Clubs
              <+ suitCards Spades <+ suitCards Diamonds
 
+-- Returns all cards of given suit
 suitCards :: Suit -> Hand
-suitCards s1 =  suitNumeric s1 <+ (Add(Card Jack s1)
+suitCards s1 =  suitNumeric s1 <+ Add(Card Jack s1)
                                   (Add(Card Queen s1)
                                   (Add(Card King s1)
                                   (Add(Card Ace s1)
-                                        Empty))))
-
+                                        Empty)))
+-- Returns all numeric cards given a suit.
 suitNumeric :: Suit -> Hand
 suitNumeric s1 = suitNumeric' s1 2
 
+-- Helper function to recursively add all numbered cards.
 suitNumeric' :: Suit -> Integer -> Hand 
 suitNumeric' s1 11 = Empty
 suitNumeric' s1 n = Add (Card (Numeric n) s1) Empty 
                     <+ suitNumeric' s1 (n+1)
 
+-- Draw a card from the deck into the hand.
 draw :: Hand -> Hand -> (Hand,Hand)
 draw Empty  h       = error "draw: The deck is empty."
 draw (Add c d) h    = (d, Add c h)
 
+-- Draws cards for the bank. The bank stops when the sum of its cards
+-- is above 15.
 playBank :: Hand -> Hand
-playBank d = playBank' (d, Empty) 
+playBank deck = playBank' (deck, Empty) 
 
+-- Helper function
 playBank' :: (Hand, Hand) -> Hand
-playBank' (d,b) | value b > 15  = b
-                | otherwise     = playBank' (d',b')
-                    where (d',b') = draw d b
+playBank' (deck,bank) | value bank > 15  = bank
+                      | otherwise        = playBank' (deck',bank')
+                where (deck',bank') = draw deck bank
 
-shuffle :: StdGen -> Hand -> Hand
-shuffle g d  = shuffle' g (d,Empty)   
+-- Shuffles the deck
+shuffle :: StdGen -> Hand -> Hand       
+shuffle _ Empty = Empty
+shuffle gen deck = Add card (shuffle gen1 deck1)
+            where (n, gen1) = randomR (0, size deck - 1) gen
+                  Add card deck1 = moveCard deck n 
 
-shuffle' :: StdGen -> (Hand, Hand) -> Hand
-shuffle' g (Empty,shufDeck) = shufDeck
-shuffle' g (deck,shufDeck)  = shuffle' g' (newDeck,(Add c shufDeck)) 
-    where   (n,g')       = randomR (0, (size deck)-1) g
-            (c, newDeck) = indexDraw (deck, Empty) n
-       
+--Puts the card of index n on top of the hand.
+moveCard :: Hand -> Integer -> Hand
+moveCard Empty _ = error "index out of bounds"
+moveCard deck 0 = deck  
+moveCard (Add card deck) n = moveCard deck (n-1) <+ Add card Empty 
 
--- Returns the hand without the card of given index,
--- and the card itself.
-indexDraw :: (Hand,Hand) -> Integer -> (Card, Hand)
-indexDraw (Empty, d') _     = error "index not present" 
-indexDraw ((Add c d), d') 0 = (c, d' <+ d)
-indexDraw ((Add c d), d') n  = indexDraw (d ,(Add c d')) (n-1)
-
+--Tests whether the cards are the same before and after shuffle.
 prop_shuffle_sameCards :: StdGen -> Card -> Hand -> Bool
 prop_shuffle_sameCards g c h =
     c `belongsTo` h == c `belongsTo` shuffle g h
